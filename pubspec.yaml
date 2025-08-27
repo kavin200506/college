@@ -1,0 +1,27 @@
+name: college
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  chat_gpt_sdk: ^3.1.5
+  dash_chat_2: ^0.0.21
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  go_router: ^16.2.0
+  google_fonts: ^6.3.0
+  http: ^1.5.0
+  ollama: ^1.0.4
+  ollama_dart: ^0.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
