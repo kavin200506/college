@@ -6,6 +6,7 @@ import 'features/ai_mentor/ai_mentor_screen.dart';
 import 'features/subjects/subjects_screen.dart';
 import 'features/assignments/assignments_screen.dart';
 import 'features/study_partners/study_partners_screen.dart';
+import 'features/skill_map/skill_map_screen.dart';  // ← Add this import
 import 'features/profile/profile_screen.dart';
 import 'features/ai_mentor/data/ai_client.dart';
 import 'features/ai_mentor/data/ollama_client.dart';
@@ -54,6 +55,7 @@ class _MainScreenState extends State<MainScreen> {
     const SubjectsScreen(),
     const AssignmentsScreen(),
     const StudyPartnersScreen(),
+    const SkillMapScreen(),  // ← Add this line
     const ProfileScreen(),
   ];
 
@@ -111,6 +113,10 @@ class _MainScreenState extends State<MainScreen> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.people_rounded),
                 label: 'Partners',
+              ),
+              BottomNavigationBarItem(               // ← Add this new tab
+                icon: Icon(Icons.explore_rounded),
+                label: 'Skills',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.person_rounded),

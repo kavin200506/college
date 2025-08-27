@@ -77,7 +77,7 @@ class SubjectsScreen extends StatelessWidget {
                   child: GridView.builder(
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      childAspectRatio: 0.85,
+                      childAspectRatio: 0.75, // ← Changed from 0.85 to 0.75 (taller cards)
                       crossAxisSpacing: 15,
                       mainAxisSpacing: 15,
                     ),
@@ -128,7 +128,7 @@ class _SubjectCard extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14), // ← Reduced padding from 16 to 14
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -137,35 +137,35 @@ class _SubjectCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(8), // ← Reduced from 10 to 8
                   decoration: BoxDecoration(
                     color: subject.color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10), // ← Reduced from 12 to 10
                   ),
                   child: Icon(
                     Icons.book,
                     color: subject.color,
-                    size: 24,
+                    size: 20, // ← Reduced from 24 to 20
                   ),
                 ),
                 Text(
                   subject.code,
                   style: GoogleFonts.poppins(
                     color: subject.color,
-                    fontSize: 12,
+                    fontSize: 11, // ← Reduced from 12 to 11
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 10), // ← Reduced from 12 to 10
 
             // Subject Name
             Text(
               subject.name,
               style: GoogleFonts.poppins(
-                fontSize: 16,
+                fontSize: 15, // ← Reduced from 16 to 15
                 fontWeight: FontWeight.bold,
                 color: Colors.grey.shade800,
               ),
@@ -173,20 +173,22 @@ class _SubjectCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 6), // ← Reduced from 8 to 6
 
             // Description
-            Text(
-              subject.description,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: Colors.grey.shade600,
+            Expanded( // ← Wrap description in Expanded
+              child: Text(
+                subject.description,
+                style: GoogleFonts.poppins(
+                  fontSize: 11, // ← Reduced from 12 to 11
+                  color: Colors.grey.shade600,
+                ),
+                maxLines: 3, // ← Increased from 2 to 3 lines
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
 
-            const Spacer(),
+            const SizedBox(height: 8), // ← Fixed spacing instead of Spacer()
 
             // Progress Bar
             Column(
@@ -198,14 +200,14 @@ class _SubjectCard extends StatelessWidget {
                     Text(
                       'Progress',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 11, // ← Reduced from 12 to 11
                         color: Colors.grey.shade600,
                       ),
                     ),
                     Text(
                       '${(subject.progress * 100).toInt()}%',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 11, // ← Reduced from 12 to 11
                         fontWeight: FontWeight.w600,
                         color: subject.color,
                       ),
