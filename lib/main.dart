@@ -6,8 +6,9 @@ import 'features/ai_mentor/ai_mentor_screen.dart';
 import 'features/subjects/subjects_screen.dart';
 import 'features/assignments/assignments_screen.dart';
 import 'features/study_partners/study_partners_screen.dart';
-import 'features/skill_map/skill_map_screen.dart';  // ← Add this import
+import 'features/skill_map/skill_map_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/ai_mentor/providers/chat_provider.dart';
 import 'features/ai_mentor/data/ai_client.dart';
 import 'features/ai_mentor/data/ollama_client.dart';
 
@@ -15,7 +16,12 @@ void main() {
   runApp(
     ProviderScope(
       overrides: [
-        aiClientProvider.overrideWithProvider(ollamaClientProvider),
+        aiClientProvider.overrideWithValue(
+          const OllamaClient(
+            baseUrl: 'http://192.168.1.12:11434',
+            model: 'llama3',
+          ),
+        ),
       ],
       child: const CollegeMateApp(),
     ),
@@ -40,14 +46,14 @@ class CollegeMateApp extends StatelessWidget {
   }
 }
 
-class MainScreen extends StatefulWidget {
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = [
@@ -55,9 +61,46 @@ class _MainScreenState extends State<MainScreen> {
     const SubjectsScreen(),
     const AssignmentsScreen(),
     const StudyPartnersScreen(),
-    const SkillMapScreen(),  // ← Add this line
+    const SkillMapScreen(),
     const ProfileScreen(),
   ];
+
+  Widget _buildNavItem(IconData icon, int index, String label) {
+    final isSelected = _currentIndex == index;
+
+    return Consumer(
+      builder: (context, ref, _) {
+        bool showBadge = false;
+        
+        if (index == 0) { // AI Mentor tab
+          final chatState = ref.watch(chatProvider);
+          final hasUserMessages = chatState.messages.length > 1;
+          showBadge = hasUserMessages && !isSelected;
+        }
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Icon(icon),
+            if (showBadge)
+              Positioned(
+                right: -6,
+                top: -2,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,29 +140,29 @@ class _MainScreenState extends State<MainScreen> {
               fontSize: 11,
               fontWeight: FontWeight.w400,
             ),
-            items: const [
+            items: [
               BottomNavigationBarItem(
-                icon: Icon(Icons.psychology_rounded),
+                icon: _buildNavItem(Icons.psychology_rounded, 0, 'AI Mentor'),
                 label: 'AI Mentor',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.book_rounded),
+                icon: _buildNavItem(Icons.book_rounded, 1, 'Subjects'),
                 label: 'Subjects',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.assignment_rounded),
+                icon: _buildNavItem(Icons.assignment_rounded, 2, 'Assignments'),
                 label: 'Assignments',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.people_rounded),
+                icon: _buildNavItem(Icons.people_rounded, 3, 'Partners'),
                 label: 'Partners',
               ),
-              BottomNavigationBarItem(               // ← Add this new tab
-                icon: Icon(Icons.explore_rounded),
+              BottomNavigationBarItem(
+                icon: _buildNavItem(Icons.explore_rounded, 4, 'Skills'),
                 label: 'Skills',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.person_rounded),
+                icon: _buildNavItem(Icons.person_rounded, 5, 'Profile'),
                 label: 'Profile',
               ),
             ],
