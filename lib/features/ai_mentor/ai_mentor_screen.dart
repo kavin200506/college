@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:math';
@@ -17,15 +18,22 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
   
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
+  
   late AnimationController _pulseController;
   late AnimationController _typingController;
+  late AnimationController _fadeController;
+
+  bool _isComposing = false;
 
   @override
-  bool get wantKeepAlive => true; // This keeps the widget alive when switching tabs
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    
+    // Animation controllers
     _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -35,54 +43,87 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat();
+
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    // Listen to text changes for better UX
+    _messageController.addListener(_onTextChanged);
   }
 
   @override
   void dispose() {
+    _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
     _scrollController.dispose();
+    _focusNode.dispose();
     _pulseController.dispose();
     _typingController.dispose();
+    _fadeController.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom() {
+  void _onTextChanged() {
+    final isComposing = _messageController.text.trim().isNotEmpty;
+    if (isComposing != _isComposing) {
+      setState(() {
+        _isComposing = isComposing;
+      });
+      
+      if (isComposing) {
+        _fadeController.forward();
+      } else {
+        _fadeController.reverse();
+      }
+    }
+  }
+
+  void _scrollToBottom({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        if (animate) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
+        } else {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
       }
     });
   }
 
   void _sendMessage() async {
     final message = _messageController.text.trim();
-    if (message.isEmpty) return;
+    if (message.isEmpty) {
+      // Provide haptic feedback for empty message
+      HapticFeedback.lightImpact();
+      return;
+    }
 
-    _messageController.clear();
+    // Haptic feedback for successful send
+    HapticFeedback.selectionClick();
     
-    // Store notifier reference BEFORE async operation
+    _messageController.clear();
+    _focusNode.requestFocus(); // Keep focus for continuous typing
+    
     final chatNotifier = ref.read(chatProvider.notifier);
     
-    // Add user message to state
     chatNotifier.addUserMessage(message);
     _scrollToBottom();
 
     try {
-      // Get AI client and send message
       final aiClient = ref.read(aiClientProvider);
       final response = await aiClient.sendMessage(message);
       
-      // Check if widget is still mounted before updating state
       if (mounted) {
         chatNotifier.addAIResponse(response);
         _scrollToBottom();
       }
     } catch (e) {
-      // Check if widget is still mounted before showing error
       if (mounted) {
         chatNotifier.setError('Failed to get AI response: $e');
       }
@@ -92,79 +133,68 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
   void _showClearChatDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Row(
-            children: [
-              Icon(
-                Icons.delete_sweep,
-                color: Colors.red.shade400,
-                size: 28,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Clear Chat History',
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            'Are you sure you want to clear all chat messages? This action cannot be undone.',
-            style: GoogleFonts.poppins(fontSize: 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.poppins(
-                  color: Colors.grey.shade600,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                ref.read(chatProvider.notifier).clearChat();
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Chat history cleared'),
-                    backgroundColor: Colors.green,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade400,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: Text(
-                'Clear',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.delete_sweep, color: Colors.red.shade400, size: 28),
+            const SizedBox(width: 12),
+            Text(
+              'Clear Chat History',
+              style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
-        );
-      },
+        ),
+        content: Text(
+          'Are you sure you want to clear all chat messages? This action cannot be undone.',
+          style: GoogleFonts.poppins(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              ref.read(chatProvider.notifier).clearChat();
+              Navigator.pop(context);
+              HapticFeedback.mediumImpact();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Text('Chat history cleared successfully'),
+                    ],
+                  ),
+                  backgroundColor: Colors.green.shade600,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('Clear', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    super.build(context);
     
     final messages = ref.watch(chatMessagesProvider);
     final isLoading = ref.watch(chatLoadingProvider);
@@ -177,23 +207,18 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFf5f7fa),
-              Color(0xFFc3cfe2),
-            ],
+            colors: [Color(0xFFf5f7fa), Color(0xFFc3cfe2)],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
-              // Header with Clear Chat Button
+              // Header
               Container(
                 margin: const EdgeInsets.all(20),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
-                  ),
+                  gradient: const LinearGradient(colors: [Color(0xFF6A11CB), Color(0xFF2575FC)]),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
@@ -214,11 +239,7 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
                             color: Colors.white.withOpacity(0.2 + _pulseController.value * 0.1),
                             borderRadius: BorderRadius.circular(15),
                           ),
-                          child: const Icon(
-                            Icons.psychology_rounded,
-                            color: Colors.white,
-                            size: 28,
-                          ),
+                          child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 28),
                         );
                       },
                     ),
@@ -236,16 +257,12 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
                             ),
                           ),
                           Text(
-                            '${messages.length} messages',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: 14,
-                            ),
+                            '${messages.length} messages • Online',
+                            style: GoogleFonts.poppins(color: Colors.white70, fontSize: 14),
                           ),
                         ],
                       ),
                     ),
-                    // Clear Chat Button
                     if (hasUserMessages)
                       Container(
                         decoration: BoxDecoration(
@@ -254,11 +271,7 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
                         ),
                         child: IconButton(
                           onPressed: _showClearChatDialog,
-                          icon: const Icon(
-                            Icons.delete_sweep,
-                            color: Colors.white,
-                            size: 24,
-                          ),
+                          icon: const Icon(Icons.delete_sweep, color: Colors.white, size: 24),
                           tooltip: 'Clear Chat',
                         ),
                       ),
@@ -269,29 +282,39 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
               // Error Display
               if (error != null && error.isNotEmpty)
                 Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.red.shade200),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.error_outline, color: Colors.red.shade600),
-                      const SizedBox(width: 8),
+                      Icon(Icons.warning_rounded, color: Colors.red.shade600, size: 24),
+                      const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          error,
-                          style: GoogleFonts.poppins(
-                            color: Colors.red.shade700,
-                            fontSize: 12,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Connection Error',
+                              style: GoogleFonts.poppins(
+                                color: Colors.red.shade800,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              'Unable to reach AI server. Please check your connection.',
+                              style: GoogleFonts.poppins(color: Colors.red.shade700, fontSize: 12),
+                            ),
+                          ],
                         ),
                       ),
                       IconButton(
                         onPressed: () => ref.read(chatProvider.notifier).setError(''),
-                        icon: Icon(Icons.close, color: Colors.red.shade600, size: 20),
+                        icon: Icon(Icons.close_rounded, color: Colors.red.shade600, size: 20),
                       ),
                     ],
                   ),
@@ -307,31 +330,28 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
                     itemCount: messages.length + (isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index == messages.length && isLoading) {
-                        return _buildTypingIndicator();
+                        return _buildEnhancedTypingIndicator();
                       }
                       
                       final message = messages[index];
-                      return _buildMessageBubble(message);
+                      return _buildEnhancedMessageBubble(message, index);
                     },
                   ),
                 ),
               ),
 
-              // Message Input
+              // Enhanced Message Input
               Container(
                 margin: const EdgeInsets.all(20),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      Colors.white,
-                      Colors.white.withOpacity(0.9),
-                    ],
+                    colors: [Colors.white, Colors.grey.shade50],
                   ),
-                  borderRadius: BorderRadius.circular(25),
+                  borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withOpacity(0.08),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -339,45 +359,84 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
                 ),
                 child: Row(
                   children: [
+                    const SizedBox(width: 16),
                     Expanded(
                       child: TextField(
                         controller: _messageController,
+                        focusNode: _focusNode,
                         decoration: InputDecoration(
                           hintText: 'Ask me anything about your studies...',
                           hintStyle: GoogleFonts.poppins(
                             color: Colors.grey.shade500,
-                            fontSize: 14,
+                            fontSize: 15,
                           ),
                           border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 16),
                         ),
-                        style: GoogleFonts.poppins(fontSize: 14),
-                        maxLines: null,
+                        style: GoogleFonts.poppins(fontSize: 15),
+                        maxLines: 4,
+                        minLines: 1,
                         textCapitalization: TextCapitalization.sentences,
-                        onSubmitted: (_) => _sendMessage(),
+                        textInputAction: TextInputAction.send, // ← This changes keyboard to "Send"
+                        keyboardType: TextInputType.multiline,
+                        onSubmitted: (value) { // ← This handles Enter key press
+                          if (value.trim().isNotEmpty && !isLoading) {
+                            _sendMessage();
+                          }
+                        },
                         enabled: !isLoading,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: isLoading
-                              ? [Colors.grey.shade400, Colors.grey.shade500]
-                              : [const Color(0xFF6A11CB), const Color(0xFF2575FC)],
+                          colors: (_isComposing && !isLoading)
+                              ? [const Color(0xFF6A11CB), const Color(0xFF2575FC)]
+                              : [Colors.grey.shade300, Colors.grey.shade400],
                         ),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: (_isComposing && !isLoading)
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFF6A11CB).withOpacity(0.4),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
+                            : [],
                       ),
-                      child: IconButton(
-                        onPressed: isLoading ? null : _sendMessage,
-                        icon: Icon(
-                          isLoading ? Icons.hourglass_empty : Icons.send_rounded,
-                          color: Colors.white,
-                          size: 20,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(24),
+                          onTap: (_isComposing && !isLoading) ? _sendMessage : null,
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: isLoading
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.send_rounded,
+                                      color: Colors.white,
+                                      size: 22,
+                                    ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(width: 4),
                   ],
                 ),
               ),
@@ -388,115 +447,150 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message) {
-    return Container(
-      margin: EdgeInsets.only(
-        bottom: 12,
-        left: message.isUser ? 60 : 0,
-        right: message.isUser ? 0 : 60,
-      ),
-      child: Row(
-        mainAxisAlignment:
-            message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!message.isUser) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: const Color(0xFF6A11CB).withOpacity(0.2),
-              child: const Icon(
-                Icons.psychology_rounded,
-                size: 16,
-                color: Color(0xFF6A11CB),
+  Widget _buildEnhancedMessageBubble(ChatMessage message, int index) { // Use ChatMessage type
+    final isUser = message.isUser;
+    
+    return TweenAnimationBuilder<double>(
+      duration: Duration(milliseconds: 300 + (index * 50)),
+      tween: Tween(begin: 0.0, end: 1.0),
+      builder: (context, value, child) {
+        return Transform.translate(
+          offset: Offset(0, 20 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: Container(
+              margin: EdgeInsets.only(
+                bottom: 16,
+                left: isUser ? 60 : 0,
+                right: isUser ? 0 : 60,
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Column(
-              crossAxisAlignment: message.isUser
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: message.isUser
-                          ? [const Color(0xFF6A11CB), const Color(0xFF2575FC)]
-                          : [Colors.white, Colors.grey.shade50],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+              child: Row(
+                mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isUser) ...[
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
+                        ),
+                        shape: BoxShape.circle,
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    message.content,
-                    style: GoogleFonts.poppins(
-                      color: message.isUser ? Colors.white : Colors.grey.shade800,
-                      fontSize: 14,
-                      height: 1.4,
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Colors.white,
+                        child: const Icon(Icons.psychology_rounded, size: 20, color: Color(0xFF6A11CB)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: isUser
+                                  ? [const Color(0xFF6A11CB), const Color(0xFF2575FC)]
+                                  : [Colors.white, Colors.grey.shade50],
+                            ),
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(24),
+                              topRight: const Radius.circular(24),
+                              bottomLeft: Radius.circular(isUser ? 24 : 8),
+                              bottomRight: Radius.circular(isUser ? 8 : 24),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            message.content,
+                            style: GoogleFonts.poppins(
+                              color: isUser ? Colors.white : Colors.grey.shade800,
+                              fontSize: 15,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _formatTime(message.timestamp),
+                          style: GoogleFonts.poppins(
+                            color: Colors.grey.shade500,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatTime(message.timestamp),
-                  style: GoogleFonts.poppins(
-                    color: Colors.grey.shade500,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+                  if (isUser) ...[
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2575FC), Color(0xFF6A11CB)],
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Colors.white,
+                        child: const Icon(Icons.person_rounded, size: 20, color: Color(0xFF2575FC)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
-          if (message.isUser) ...[
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: const Color(0xFF2575FC).withOpacity(0.2),
-              child: const Icon(
-                Icons.person,
-                size: 16,
-                color: Color(0xFF2575FC),
-              ),
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildTypingIndicator() {
+  Widget _buildEnhancedTypingIndicator() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12, right: 60),
+      margin: const EdgeInsets.only(bottom: 16, right: 60),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: const Color(0xFF6A11CB).withOpacity(0.2),
-            child: const Icon(
-              Icons.psychology_rounded,
-              size: 16,
-              color: Color(0xFF6A11CB),
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF6A11CB), Color(0xFF2575FC)]),
+              shape: BoxShape.circle,
+            ),
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: Colors.white,
+              child: const Icon(Icons.psychology_rounded, size: 20, color: Color(0xFF6A11CB)),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
+                bottomRight: Radius.circular(24),
+                bottomLeft: Radius.circular(8),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
@@ -508,17 +602,19 @@ class _AIMentorScreenState extends ConsumerState<AIMentorScreen>
                   children: List.generate(3, (index) {
                     final delay = index * 0.2;
                     final animationValue = (_typingController.value - delay).clamp(0.0, 1.0);
-                    final scale = sin(animationValue * pi) * 0.5 + 0.5;
+                    final scale = sin(animationValue * pi) * 0.6 + 0.4;
                     
                     return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
                       child: Transform.scale(
                         scale: scale,
                         child: Container(
-                          width: 8,
-                          height: 8,
+                          width: 10,
+                          height: 10,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF6A11CB).withOpacity(0.7),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
+                            ),
                             shape: BoxShape.circle,
                           ),
                         ),
