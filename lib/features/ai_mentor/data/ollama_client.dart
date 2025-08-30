@@ -7,7 +7,7 @@ final ollamaClientProvider = Provider<AIClient>((_) {
   return OllamaClient(
     baseUrl: const String.fromEnvironment(
       'OLLAMA_ENDPOINT',
-      defaultValue: 'http://10.45.229.208:11434',  // ← Your laptop's IP
+      defaultValue: 'http://192.168.1.12:11434',  // ← Your laptop's IP
     ),
     model: const String.fromEnvironment(
       'OLLAMA_MODEL',
