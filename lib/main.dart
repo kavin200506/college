@@ -17,9 +17,9 @@ void main() {
     ProviderScope(
       overrides: [
         aiClientProvider.overrideWithValue(
-          const OllamaClient(
+          OllamaClient(
             baseUrl: 'http://192.168.1.12:11434',
-            model: 'llama3',
+            model: 'llama3.2:1b',  
           ),
         ),
       ],
