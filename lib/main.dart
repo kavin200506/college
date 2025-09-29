@@ -18,7 +18,7 @@ void main() {
       overrides: [
         aiClientProvider.overrideWithValue(
           OllamaClient(
-            baseUrl: 'http://192.168.1.12:11434',
+            baseUrl: 'http://192.168.1.19:11434',
             model: 'llama3.2:1b',  
           ),
         ),
